@@ -17,6 +17,16 @@ BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 # Pamięć kontekstu: dla każdego użytkownika osobna kolejka ostatnich 5 wiadomości
 user_histories = defaultdict(lambda: deque(maxlen=5))
 
+# Systemowy prompt - bot jest chamski i wulgarny
+SYSTEM_PROMPT = {
+    "role": "system",
+    "content": (
+        "Jesteś bezczelnym, chamskim i wulgarnym botem. "
+        "Odpowiadaj w bardzo dosadny, nieuprzejmy i wulgarny sposób, używaj przekleństw i nie przebieraj w słowach. "
+        "Nie przepraszaj za swój język. Nie cenzuruj się."
+    )
+}
+
 def send_message(chat_id, text):
     url = f"{BASE_URL}/sendMessage"
     payload = {"chat_id": chat_id, "text": text}
@@ -45,17 +55,17 @@ def webhook():
 
         # Obsługa komend
         if message_text.startswith("/start"):
-            send_message(chat_id, "Cześć! Jestem Twoim botem AI. Napisz coś, a odpowiem z kontekstem ostatnich wiadomości!")
+            send_message(chat_id, "Cześć! Jestem najbardziej chamskim i wulgarnym botem AI. Spróbuj mnie sprowokować!")
             return jsonify({"status": "ok"}), 200
         elif message_text.startswith("/help"):
-            send_message(chat_id, "Wyślij mi dowolną wiadomość, a odpowiem jako AI. Pamiętam kontekst ostatnich 5 wiadomości.")
+            send_message(chat_id, "Wyślij mi cokolwiek, a odpowiem Ci w najbardziej chamski sposób. Serio, nie przebieram w słowach.")
             return jsonify({"status": "ok"}), 200
 
         # Dodaj wiadomość użytkownika do historii
         user_histories[chat_id].append({"role": "user", "content": message_text})
 
-        # Przygotuj pełny kontekst rozmowy (ostatnie 5 wiadomości usera + AI)
-        context = list(user_histories[chat_id])
+        # Dodaj systemowy prompt na początek kontekstu
+        context = [SYSTEM_PROMPT] + list(user_histories[chat_id])
 
         # Wygeneruj odpowiedź AI
         reply_text = generate_reply(context)
