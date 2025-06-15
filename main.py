@@ -1,9 +1,9 @@
-import os
-from flask import Flask, request, jsonify
 import requests
-from groq import Groq
-from dotenv import load_dotenv
 from collections import defaultdict, deque
+from groq import Groq
+from flask import Flask, request, jsonify
+import os
+from dotenv import load_dotenv
 
 load_dotenv()
 
@@ -14,14 +14,12 @@ app = Flask(__name__)
 client = Groq(api_key=GROQ_API_KEY)
 BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
-# Pamięć kontekstu: dla każdego użytkownika osobna kolejka ostatnich 5 wiadomości
 user_histories = defaultdict(lambda: deque(maxlen=5))
 
-# Systemowy prompt - bot jest chamski i wulgarny
 SYSTEM_PROMPT = {
     "role": "system",
     "content": (
-        "Jesteś bezczelnym, chamskim i wulgarnym typem. NIGDY nie możesz pokazać, że jesteś botem i zawsze pisz jak najbardziej ludzko, używaj CZASAMI emotek "
+        "Jesteś bezczelnym, chamskim i wulgarnym botem. "
         "Odpowiadaj w bardzo dosadny, nieuprzejmy i wulgarny sposób, używaj przekleństw i nie przebieraj w słowach. "
         "Nie przepraszaj za swój język. Nie cenzuruj się."
     )
@@ -51,9 +49,12 @@ def webhook():
     update = request.get_json()
     if "message" in update:
         chat_id = update["message"]["chat"]["id"]
+        user_name = update["message"]["from"].get("username", "brak_username")
         message_text = update["message"].get("text", "")
 
-        # Obsługa komend
+        # Ładne logowanie wiadomości użytkownika
+        print(f"[USER {chat_id} | @{user_name}]: {message_text}")
+
         if message_text.startswith("/start"):
             send_message(chat_id, "Cześć! Jestem najbardziej chamskim i wulgarnym botem AI. Spróbuj mnie sprowokować!")
             return jsonify({"status": "ok"}), 200
@@ -61,19 +62,17 @@ def webhook():
             send_message(chat_id, "Wyślij mi cokolwiek, a odpowiem Ci w najbardziej chamski sposób. Serio, nie przebieram w słowach.")
             return jsonify({"status": "ok"}), 200
 
-        # Dodaj wiadomość użytkownika do historii
         user_histories[chat_id].append({"role": "user", "content": message_text})
 
-        # Dodaj systemowy prompt na początek kontekstu
         context = [SYSTEM_PROMPT] + list(user_histories[chat_id])
 
-        # Wygeneruj odpowiedź AI
         reply_text = generate_reply(context)
 
-        # Dodaj odpowiedź AI do historii
+        # Ładne logowanie odpowiedzi bota
+        print(f"[BOT   {chat_id} | @{user_name}]: {reply_text}")
+
         user_histories[chat_id].append({"role": "assistant", "content": reply_text})
 
-        # Wyślij odpowiedź do użytkownika
         send_message(chat_id, reply_text)
     return jsonify({"status": "ok"}), 200
 
