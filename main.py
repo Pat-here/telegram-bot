@@ -28,10 +28,31 @@ MAIN_MENU = 0
 MENU_KEYBOARD = ReplyKeyboardMarkup(
     [
         [KeyboardButton("💬 Nowy czat"), KeyboardButton("📝 Pokaż historię")],
-        [KeyboardButton("❌ Reset historii"), KeyboardButton("ℹ️ Pomoc")]
+        [KeyboardButton("❌ Reset historii"), KeyboardButton("⚡ ADHD tryb")],
+        [KeyboardButton("ℹ️ Pomoc")]
     ],
     resize_keyboard=True,
 )
+
+# System prompty
+NORMAL_PROMPT = {
+    "role": "system",
+    "content": (
+        "Jesteś zwyrodniałym, niecenzurowanym, bardzo bezpośrednim chatbotem z ADHD. "
+        "Odpowiadaj szybko, z energią, używaj wulgaryzmów, memów, skrótów, żartów, "
+        "nie przepraszaj za swój styl. Możesz być niegrzeczny, ironiczny, sarkastyczny, "
+        "ale zawsze śmieszny i z ADHD. Nie cenzuruj się."
+    )
+}
+ADHD_PROMPT = {
+    "role": "system",
+    "content": (
+        "Jesteś turbo zwyrodniałym, niecenzurowanym, hiperaktywnym chatbotem z ADHD. "
+        "Odpowiadaj bardzo szybko, chaotycznie, z przesadą, używaj dużo wykrzykników, "
+        "wulgaryzmów, memów, randomowych wtrąceń, emotek, CAPSLOCKA, śmiej się z wszystkiego, "
+        "nie przepraszaj za nic, nie cenzuruj się. Możesz być dziecinny i turbo śmieszny."
+    )
+}
 
 def get_history(user_id):
     path = os.path.join(CONV_DIR, f"{user_id}.json")
@@ -63,8 +84,9 @@ def chat_with_gpt(messages):
         return f"Błąd: {e}"
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["adhd"] = False
     await update.message.reply_text(
-        "Cześć! Jestem Twoim chatbotem. Wybierz opcję z menu lub napisz wiadomość.",
+        "Siema! Jestem zwyrodniały bot z ADHD. Wybierz coś z menu albo napisz wiadomość.",
         reply_markup=MENU_KEYBOARD,
     )
     return MAIN_MENU
@@ -76,15 +98,15 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text == "💬 Nowy czat":
         save_history(user_id, [])
         await update.message.reply_text(
-            "Nowy czat rozpoczęty. Napisz coś!",
-            reply_markup=ReplyKeyboardRemove(),
+            "Nowy czat odpalony! Dawaj, pisz coś pojebanego.",
+            reply_markup=MENU_KEYBOARD,
         )
         return MAIN_MENU
 
     elif text == "📝 Pokaż historię":
         history = get_history(user_id)
         if not history:
-            await update.message.reply_text("Brak historii rozmowy.", reply_markup=MENU_KEYBOARD)
+            await update.message.reply_text("Nie masz historii, leniu! Zacznij gadać.", reply_markup=MENU_KEYBOARD)
         else:
             msg = "\n".join(
                 [f"{h['role']}: {h['content']}" for h in history[-10:]]
@@ -94,16 +116,26 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif text == "❌ Reset historii":
         save_history(user_id, [])
-        await update.message.reply_text("Historia została wyczyszczona.", reply_markup=MENU_KEYBOARD)
+        await update.message.reply_text("Wyjebałem całą twoją historię. Możesz zaczynać od nowa!", reply_markup=MENU_KEYBOARD)
+        return MAIN_MENU
+
+    elif text == "⚡ ADHD tryb":
+        adhd = context.user_data.get("adhd", False)
+        context.user_data["adhd"] = not adhd
+        if not adhd:
+            await update.message.reply_text("ADHD tryb WŁĄCZONY! Zaraz cię zasypię tekstami jak ADHDowiec na cukrze!", reply_markup=MENU_KEYBOARD)
+        else:
+            await update.message.reply_text("ADHD tryb WYŁĄCZONY. Wracam do zwyrodniałego standardu.", reply_markup=MENU_KEYBOARD)
         return MAIN_MENU
 
     elif text == "ℹ️ Pomoc":
         await update.message.reply_text(
             "Menu:\n"
-            "💬 Nowy czat – rozpocznij nową rozmowę\n"
+            "💬 Nowy czat – zacznij od nowa\n"
             "📝 Pokaż historię – wyświetl ostatnie wiadomości\n"
             "❌ Reset historii – usuń całą historię\n"
-            "Po prostu napisz, jeśli chcesz porozmawiać z AI.",
+            "⚡ ADHD tryb – włącz/wyłącz turbo ADHD styl\n"
+            "Po prostu napisz, jeśli chcesz pogadać z pojebanym AI.",
             reply_markup=MENU_KEYBOARD,
         )
         return MAIN_MENU
@@ -118,10 +150,11 @@ async def chat_ai(update: Update, context: ContextTypes.DEFAULT_TYPE):
     history = get_history(user_id)
     history.append({"role": "user", "content": user_msg})
 
-    # Ogranicz długość historii (np. ostatnie 10 wiadomości)
     short_history = history[-10:]
 
-    messages = [{"role": h["role"], "content": h["content"]} for h in short_history]
+    # Wybierz prompt w zależności od trybu
+    system_prompt = ADHD_PROMPT if context.user_data.get("adhd", False) else NORMAL_PROMPT
+    messages = [system_prompt] + [{"role": h["role"], "content": h["content"]} for h in short_history]
 
     bot_reply = chat_with_gpt(messages)
     history.append({"role": "assistant", "content": bot_reply})
@@ -145,7 +178,7 @@ def main():
     app.add_handler(conv_handler)
     app.add_handler(CommandHandler("menu", start))
 
-    print("Bot działa!")
+    print("Bot zwyrodniały z ADHD działa!")
     app.run_polling()
 
 if __name__ == "__main__":
