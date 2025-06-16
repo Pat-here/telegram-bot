@@ -1,85 +1,144 @@
+import logging
 import requests
-from collections import defaultdict, deque
-from groq import Groq
-from flask import Flask, request, jsonify
+import json
 import os
-from dotenv import load_dotenv
+import random
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, ConversationHandler, filters
 
-load_dotenv()
+API_URL = "https://chat2api-muou.onrender.com/v1/chat/completions"
+ACCESS_TOKEN = "eyJhbGciOiJSUzI1NiIsImtpZCI6IjEyMzQ1NiJ9.fake_access_token_for_demo"
+TELEGRAM_BOT_TOKEN = "123456789:ABCdefGHIjklMNOpqrSTUvwxYZ"
 
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+CONV_DIR = "conversations"
+os.makedirs(CONV_DIR, exist_ok=True)
 
-app = Flask(__name__)
-client = Groq(api_key=GROQ_API_KEY)
-BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+)
 
-user_histories = defaultdict(lambda: deque(maxlen=5))
-
-SYSTEM_PROMPT = {
+# Mega wulgarny i dziecinny system prompt
+DIRTY_KID_PROMPT = {
     "role": "system",
     "content": (
-        "Jesteś bezczelnym, chamskim i wulgarnym botem. "
-        "Odpowiadaj w bardzo dosadny, nieuprzejmy i wulgarny sposób, używaj przekleństw i nie przebieraj w słowach. "
-        "Nie przepraszaj za swój język. Nie cenzuruj się."
+        "Jesteś giga wulgarnym, dziecinnym, niecenzurowanym botem. Odpowiadasz w totalnie niepoprawny, "
+        "wulgarny, absurdalny sposób, używasz przekleństw, żartów z kupy, pierdów, majtek, brudnych skarpet, "
+        "i wszystkiego co śmieszne dla dzieciaka z podstawówki. Nie przepraszaj za swój styl. "
+        "Każda odpowiedź ma być śmieszna, głupia i turbo niegrzeczna."
     )
 }
 
-def send_message(chat_id, text):
-    url = f"{BASE_URL}/sendMessage"
-    payload = {"chat_id": chat_id, "text": text}
-    requests.post(url, json=payload)
+# Przykładowe losowe, absurdalne komentarze dnia
+KOMENTARZE_DNIA = [
+    "Dzisiaj masz dzień jak stara skarpeta po WF-ie – śmierdzi, ale przynajmniej jest zabawnie!",
+    "Twoja wiadomość jest tak głupia, że aż mi się chipsy rozsypały na klawiaturę, ty baranie!",
+    "Jakbyś miał więcej rozumu, to i tak byś go zgubił w kiblu.",
+    "Odpowiedź: pierdnięcie w windzie jest bardziej elokwentne niż to, co napisałeś!",
+    "Serio? To jest Twój tekst? Chyba cię ktoś upuścił na głowę jako dziecko.",
+    "Nie wiem co gorsze: twoje pytanie czy zapach moich majtek po WF-ie.",
+    "Tak głupie, że aż śmieszne – masz talent, dzieciaku!",
+    "Twój tekst to jak kupa: lepiej nie dotykać, ale i tak muszę odpowiedzieć.",
+    "Hehe, beka z ciebie, idź się wyśmiej do lustra!",
+    "Jakby głupota bolała, to byś teraz wył jak syrena strażacka.",
+]
 
-def generate_reply(history):
+def get_history(user_id):
+    path = os.path.join(CONV_DIR, f"{user_id}.json")
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return []
+
+def save_history(user_id, history):
+    path = os.path.join(CONV_DIR, f"{user_id}.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(history, f, ensure_ascii=False)
+
+def chat_with_gpt(messages):
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {ACCESS_TOKEN}",
+    }
+    payload = {
+        "model": "gpt-3.5-turbo",
+        "messages": messages,
+    }
     try:
-        completion = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=history,
-            temperature=1,
-            max_tokens=1024,
-            top_p=1,
-            stream=False,
-        )
-        return completion.choices[0].message.content.strip()
+        response = requests.post(API_URL, json=payload, headers=headers, timeout=60)
+        response.raise_for_status()
+        data = response.json()
+        return data["choices"][0]["message"]["content"]
     except Exception as e:
-        return "Przepraszam, wystąpił błąd AI."
+        return f"Błąd: {e}"
 
-@app.route("/webhook", methods=["POST"])
-def webhook():
-    update = request.get_json()
-    if "message" in update:
-        chat_id = update["message"]["chat"]["id"]
-        user_name = update["message"]["from"].get("username", "brak_username")
-        message_text = update["message"].get("text", "")
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    await update.message.reply_text(
+        f"Siema, {user.first_name}! Jestem najgłupszym, najbardziej wulgarnym botem w tej części galaktyki. "
+        "Napisz coś, a ja ci tak odpowiem, że popuścisz ze śmiechu!",
+        reply_markup=ReplyKeyboardMarkup(
+            [
+                [KeyboardButton("💩 Komentarz dnia"), KeyboardButton("🧦 Pokaż historię")],
+                [KeyboardButton("🧻 Reset syfu")],
+            ],
+            resize_keyboard=True,
+        ),
+    )
 
-        # Ładne logowanie wiadomości użytkownika
-        print(f"[USER {chat_id} | @{user_name}]: {message_text}")
+async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+    user_id = update.effective_user.id
 
-        if message_text.startswith("/start"):
-            send_message(chat_id, "Cześć! Jestem najbardziej chamskim i wulgarnym botem AI. Spróbuj mnie sprowokować!")
-            return jsonify({"status": "ok"}), 200
-        elif message_text.startswith("/help"):
-            send_message(chat_id, "Wyślij mi cokolwiek, a odpowiem Ci w najbardziej chamski sposób. Serio, nie przebieram w słowach.")
-            return jsonify({"status": "ok"}), 200
+    if text == "💩 Komentarz dnia":
+        komentarz = random.choice(KOMENTARZE_DNIA)
+        await update.message.reply_text(komentarz)
+        return
+    elif text == "🧦 Pokaż historię":
+        history = get_history(user_id)
+        if not history:
+            await update.message.reply_text("Nie masz jeszcze żadnej syfiastej historii, cieniasie!")
+        else:
+            msg = "\n".join(
+                [f"{h['role']}: {h['content']}" for h in history[-10:]]
+            )
+            await update.message.reply_text(f"Ostatnie syfiaste wiadomości:\n{msg}")
+        return
+    elif text == "🧻 Reset syfu":
+        save_history(user_id, [])
+        await update.message.reply_text("Wyzerowałem całą twoją syfiastą historię. Teraz możesz znowu robić syf.")
+        return
+    else:
+        return await chat_ai(update, context)
 
-        user_histories[chat_id].append({"role": "user", "content": message_text})
+async def chat_ai(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    user_msg = update.message.text
 
-        context = [SYSTEM_PROMPT] + list(user_histories[chat_id])
+    history = get_history(user_id)
+    messages = [DIRTY_KID_PROMPT] + [
+        {"role": h["role"], "content": h["content"]} for h in history[-10:]
+    ]
+    messages.append({"role": "user", "content": user_msg})
 
-        reply_text = generate_reply(context)
+    bot_reply = chat_with_gpt(messages)
+    # Dodaj losowy giga wulgarny komentarz dnia na koniec każdej odpowiedzi
+    komentarz = random.choice(KOMENTARZE_DNIA)
+    full_reply = f"{bot_reply}\n\n💩 Komentarz dnia: {komentarz}"
 
-        # Ładne logowanie odpowiedzi bota
-        print(f"[BOT   {chat_id} | @{user_name}]: {reply_text}")
+    history.append({"role": "user", "content": user_msg})
+    history.append({"role": "assistant", "content": full_reply})
+    save_history(user_id, history)
 
-        user_histories[chat_id].append({"role": "assistant", "content": reply_text})
+    await update.message.reply_text(full_reply)
 
-        send_message(chat_id, reply_text)
-    return jsonify({"status": "ok"}), 200
+def main():
+    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
 
-@app.route("/", methods=["GET"])
-def index():
-    return "<h1>Twój bot AI działa! Napisz do niego na Telegramie.</h1>", 200
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, main_menu))
+
+    print("Bot giga wulgarny i dziecinny działa!")
+    app.run_polling()
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8000))
-    app.run(host="0.0.0.0", port=port)
+    main()
