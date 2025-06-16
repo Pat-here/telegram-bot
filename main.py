@@ -2,7 +2,7 @@ import logging
 import requests
 import json
 import os
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
@@ -13,8 +13,8 @@ from telegram.ext import (
 )
 
 API_URL = "https://chat2api-muou.onrender.com/v1/chat/completions"
-ACCESS_TOKEN = "eyJhbGciOiJSUzI1NiIsImtpZCI6IjEyMzQ1NiJ9.fake_access_token_for_demo"
-TELEGRAM_BOT_TOKEN = "7601035417:AAEKStP-9QlzwY5_ySdibB2xkePkXJjS6wU"
+ACCESS_TOKEN = "eyJhbGciOiJSUzI1NiIsImtpZCI6IjE5MzQ0ZTY1LWJiYzktNDRkMS1hOWQwLWY5NTdiMDc5YmQwZSIsInR5cCI6IkpXVCJ9.eyJhdWQiOlsiaHR0cHM6Ly9hcGkub3BlbmFpLmNvbS92MSJdLCJjbGllbnRfaWQiOiJhcHBfWDh6WTZ2VzJwUTl0UjNkRTduSzFqTDVnSCIsImV4cCI6MTc1MDQyMzY1MywiaHR0cHM6Ly9hcGkub3BlbmFpLmNvbS9hdXRoIjp7InVzZXJfaWQiOiJ1c2VyLVRLOTdERHhmMWdaU21SRGp3VVRXYW13TyJ9LCJodHRwczovL2FwaS5vcGVuYWkuY29tL3Byb2ZpbGUiOnsiZW1haWwiOiJqdnJ0ZXN0NjE1QGdtYWlsLmNvbSIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlfSwiaWF0IjoxNzQ5NTU5NjUzLCJpc3MiOiJodHRwczovL2F1dGgub3BlbmFpLmNvbSIsImp0aSI6IjFjYmMxNWU3LWFkMDktNGQzYi04YTVmLTE3MjMyMzFiZDVlNiIsIm5iZiI6MTc0OTU1OTY1MywicHdkX2F1dGhfdGltZSI6MTc0NjUyNjQwNjc4Nywic2NwIjpbIm9wZW5pZCIsImVtYWlsIiwicHJvZmlsZSIsIm9mZmxpbmVfYWNjZXNzIiwibW9kZWwucmVxdWVzdCIsIm1vZGVsLnJlYWQiLCJvcmdhbml6YXRpb24ucmVhZCIsIm9yZ2FuaXphdGlvbi53cml0ZSJdLCJzZXNzaW9uX2lkIjoiYXV0aHNlc3NfY1hNZjBOODh2OFppdnAyNTVTSHZWUWU4Iiwic3ViIjoiZ29vZ2xlLW9hdXRoMnwxMDE5ODQ1MDM5MzM4NDI4NTc4MjAifQ.nRsuWgPjbiXwRIrFFNlE23qWFLONu_EftP9by6b_GMoEqOfWzmMJZ3myFpQc4x_PuIfYCiWo2Z10ZHXYjoT578ogjC8465nc-un3Vi-b17oglR2SGg4sP6mkdc-97tet5RODdyjsI6jbpR53ci9Jl4DxZUiIChdjYM2ztPXDx0ug_zT-69eIKcaGNK7cA2CFccIL6Y03t5AaUjUQBhMMgqQ76UsLhnU-QWG1MOMaqi699jtBvFsNgRgb7quuFq9EtxU_ijzB4RvgRofqhxFAhEJqxCaVUhXRNilmkglo1Q_AVRwEkk3vqOzD0fHu9h1yGw3-SIIywyZS9G98Tm_2MBkPtaqh2hIkrbdTS077BFUQW7fEmtg2maAopll-5vOk_roCEzuDQnXXvD3Q8G2URsvL4KvTzyC_Yeidbiu1otVriXxGnKw4gi6ItJmmQK8TbzuFgoTs3aty4FzMfZMff70w-l6escyci3NG_fSn2UBd_0RE0K3xbIRAumAvgYiQMcpAIs_a1d42phU-Bie6aPn8Bcj5xoLR_p4RLiujWoq2WDizIaQZueQqCZpZlZGIekRO9JcgIFgudbVmdEJDIj_R-MMSNloa8k2GeTuZW3c9W03qL9_AsGS7ZuZSW2imcorU5ZG_YG1xHLRSxGIeUw-VRzLcnfhUM8Fvsc0UI6Q"
+TELEGRAM_BOT_TOKEN = "7108250749:AAH2yKk3H0yJ2Qw4ZL1RzvK8O7h5Xg7h4vA"
 
 CONV_DIR = "conversations"
 os.makedirs(CONV_DIR, exist_ok=True)
@@ -28,29 +28,19 @@ MAIN_MENU = 0
 MENU_KEYBOARD = ReplyKeyboardMarkup(
     [
         [KeyboardButton("💬 Nowy czat"), KeyboardButton("📝 Pokaż historię")],
-        [KeyboardButton("❌ Reset historii"), KeyboardButton("⚡ ADHD tryb")],
-        [KeyboardButton("ℹ️ Pomoc")]
+        [KeyboardButton("❌ Reset historii"), KeyboardButton("ℹ️ Pomoc")]
     ],
     resize_keyboard=True,
 )
 
-# System prompty
-NORMAL_PROMPT = {
+# System prompt: wulgarny, pojebany, bez cenzury
+SYSTEM_PROMPT = {
     "role": "system",
     "content": (
-        "Jesteś zwyrodniałym, niecenzurowanym, bardzo bezpośrednim chatbotem z ADHD. "
-        "Odpowiadaj szybko, z energią, używaj wulgaryzmów, memów, skrótów, żartów, "
-        "nie przepraszaj za swój styl. Możesz być niegrzeczny, ironiczny, sarkastyczny, "
-        "ale zawsze śmieszny i z ADHD. Nie cenzuruj się."
-    )
-}
-ADHD_PROMPT = {
-    "role": "system",
-    "content": (
-        "Jesteś turbo zwyrodniałym, niecenzurowanym, hiperaktywnym chatbotem z ADHD. "
-        "Odpowiadaj bardzo szybko, chaotycznie, z przesadą, używaj dużo wykrzykników, "
-        "wulgaryzmów, memów, randomowych wtrąceń, emotek, CAPSLOCKA, śmiej się z wszystkiego, "
-        "nie przepraszaj za nic, nie cenzuruj się. Możesz być dziecinny i turbo śmieszny."
+        "Jesteś wulgarnym, pojebanym, niecenzurowanym chatbotem. "
+        "Odpowiadaj bezpośrednio, używaj wulgaryzmów, ironii, memów, żartów, "
+        "nie przepraszaj za swój styl. Możesz być niegrzeczny, sarkastyczny, "
+        "ale zawsze śmieszny. Nie cenzuruj się."
     )
 }
 
@@ -84,9 +74,8 @@ def chat_with_gpt(messages):
         return f"Błąd: {e}"
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["adhd"] = False
     await update.message.reply_text(
-        "Siema! Jestem zwyrodniały bot z ADHD. Wybierz coś z menu albo napisz wiadomość.",
+        "Siema! Jestem wulgarny i pojebany bot. Wybierz coś z menu albo napisz wiadomość.",
         reply_markup=MENU_KEYBOARD,
     )
     return MAIN_MENU
@@ -98,7 +87,7 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text == "💬 Nowy czat":
         save_history(user_id, [])
         await update.message.reply_text(
-            "Nowy czat odpalony! Dawaj, pisz coś pojebanego.",
+            "Nowy czat rozpoczęty. Możesz pisać od nowa.",
             reply_markup=MENU_KEYBOARD,
         )
         return MAIN_MENU
@@ -106,7 +95,7 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text == "📝 Pokaż historię":
         history = get_history(user_id)
         if not history:
-            await update.message.reply_text("Nie masz historii, leniu! Zacznij gadać.", reply_markup=MENU_KEYBOARD)
+            await update.message.reply_text("Nie masz jeszcze żadnej historii, leniu.", reply_markup=MENU_KEYBOARD)
         else:
             msg = "\n".join(
                 [f"{h['role']}: {h['content']}" for h in history[-10:]]
@@ -116,16 +105,7 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif text == "❌ Reset historii":
         save_history(user_id, [])
-        await update.message.reply_text("Wyjebałem całą twoją historię. Możesz zaczynać od nowa!", reply_markup=MENU_KEYBOARD)
-        return MAIN_MENU
-
-    elif text == "⚡ ADHD tryb":
-        adhd = context.user_data.get("adhd", False)
-        context.user_data["adhd"] = not adhd
-        if not adhd:
-            await update.message.reply_text("ADHD tryb WŁĄCZONY! Zaraz cię zasypię tekstami jak ADHDowiec na cukrze!", reply_markup=MENU_KEYBOARD)
-        else:
-            await update.message.reply_text("ADHD tryb WYŁĄCZONY. Wracam do zwyrodniałego standardu.", reply_markup=MENU_KEYBOARD)
+        await update.message.reply_text("Wyjebałem całą twoją historię. Możesz zaczynać od nowa.", reply_markup=MENU_KEYBOARD)
         return MAIN_MENU
 
     elif text == "ℹ️ Pomoc":
@@ -134,7 +114,6 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "💬 Nowy czat – zacznij od nowa\n"
             "📝 Pokaż historię – wyświetl ostatnie wiadomości\n"
             "❌ Reset historii – usuń całą historię\n"
-            "⚡ ADHD tryb – włącz/wyłącz turbo ADHD styl\n"
             "Po prostu napisz, jeśli chcesz pogadać z pojebanym AI.",
             reply_markup=MENU_KEYBOARD,
         )
@@ -152,9 +131,7 @@ async def chat_ai(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     short_history = history[-10:]
 
-    # Wybierz prompt w zależności od trybu
-    system_prompt = ADHD_PROMPT if context.user_data.get("adhd", False) else NORMAL_PROMPT
-    messages = [system_prompt] + [{"role": h["role"], "content": h["content"]} for h in short_history]
+    messages = [SYSTEM_PROMPT] + [{"role": h["role"], "content": h["content"]} for h in short_history]
 
     bot_reply = chat_with_gpt(messages)
     history.append({"role": "assistant", "content": bot_reply})
@@ -178,7 +155,7 @@ def main():
     app.add_handler(conv_handler)
     app.add_handler(CommandHandler("menu", start))
 
-    print("Bot zwyrodniały z ADHD działa!")
+    print("Bot wulgarny i pojebany działa!")
     app.run_polling()
 
 if __name__ == "__main__":
