@@ -14,7 +14,7 @@ from telegram.ext import (
 
 API_URL = "https://chat2api-muou.onrender.com/v1/chat/completions"
 ACCESS_TOKEN = "eyJhbGciOiJSUzI1NiIsImtpZCI6IjEyMzQ1NiJ9.fake_access_token_for_demo"
-TELEGRAM_BOT_TOKEN = "123456789:ABCdefGHIjklMNOpqrSTUvwxYZ"
+TELEGRAM_BOT_TOKEN = "7601035417:AAEKStP-9QlzwY5_ySdibB2xkePkXJjS6wU"
 
 CONV_DIR = "conversations"
 os.makedirs(CONV_DIR, exist_ok=True)
