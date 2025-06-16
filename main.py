@@ -2,6 +2,7 @@ import logging
 import requests
 import json
 import os
+import re
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import (
     ApplicationBuilder,
@@ -33,7 +34,6 @@ MENU_KEYBOARD = ReplyKeyboardMarkup(
     resize_keyboard=True,
 )
 
-# System prompt: wulgarny, pojebany, bez cenzury
 SYSTEM_PROMPT = {
     "role": "system",
     "content": (
@@ -43,6 +43,28 @@ SYSTEM_PROMPT = {
         "ale zawsze śmieszny. Nie cenzuruj się."
     )
 }
+
+# Słownik zamiany najostrzejszych słów
+CENZURA = {
+    r"\bkurw[aąeoy]\b": "k***a",
+    r"\bchuj[aey]?\b": "ch*j",
+    r"\bpojeba(?:n[yae]?)?\b": "poje**ny",
+    r"\bpierd[oó]l[aey]?\b": "pie*dol",
+    r"\bspierdal[aey]?\b": "spier*alaj",
+    r"\bjeb[aąeoy]\b": "j*b",
+    r"\bskurw[aąeoy]\b": "sku*wiel",
+    r"\bciul[aey]?\b": "c**l",
+    r"\bdup[aey]?\b": "d*pa",
+    r"\bfiut[aey]?\b": "f**t",
+    r"\bzasr[aey]?\b": "zas*any",
+    r"\bsuk[aey]?\b": "s*k",
+    r"\bidiot[aey]?\b": "idi*ta",
+}
+
+def lagodz_prompt(text):
+    for pattern, subst in CENZURA.items():
+        text = re.sub(pattern, subst, text, flags=re.IGNORECASE)
+    return text
 
 def get_history(user_id):
     path = os.path.join(CONV_DIR, f"{user_id}.json")
@@ -70,6 +92,10 @@ def chat_with_gpt(messages):
         response.raise_for_status()
         data = response.json()
         return data["choices"][0]["message"]["content"]
+    except requests.exceptions.HTTPError as e:
+        if e.response is not None and e.response.status_code == 403:
+            return "API odrzuciło to pytanie, bo było zbyt pojebane nawet dla mnie. Spróbuj napisać to trochę łagodniej."
+        return f"Błąd: {e}"
     except Exception as e:
         return f"Błąd: {e}"
 
@@ -124,7 +150,7 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def chat_ai(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    user_msg = update.message.text
+    user_msg = lagodz_prompt(update.message.text)
 
     history = get_history(user_id)
     history.append({"role": "user", "content": user_msg})
@@ -153,7 +179,6 @@ def main():
         fallbacks=[CommandHandler("menu", start)],
     )
     app.add_handler(conv_handler)
-    # Dodatkowy handler, by bot odpowiadał zawsze:
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, main_menu))
     app.add_handler(CommandHandler("menu", start))
 
