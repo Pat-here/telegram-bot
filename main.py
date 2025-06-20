@@ -6,7 +6,7 @@ import time
 from telebot import types
 
 # Konfiguracja
-BOT_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN_HERE"  # Zamień na swój token
+BOT_TOKEN = "5571257868:AAEeNLXwvgFwn3O-RQ_wx4SqTmKnzQoHYEg"  # Zamień na swój token
 WYKOP_API_KEY = "w5a3a180511bc4485f634ea0250255b7d9"
 WYKOP_SECRET = "dce46552b1a284afba3939adee893109"
 
