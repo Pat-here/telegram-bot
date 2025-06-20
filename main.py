@@ -8,7 +8,7 @@ from telebot import types
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-BOT_TOKEN = "TWÓJ_TELEGRAM_BOT_TOKEN"  # Zamień na token od @BotFather[1]
+BOT_TOKEN = "5571257868:AAEeNLXwvgFwn3O-RQ_wx4SqTmKnzQoHYEg"  # Zamień na token od @BotFather[1]
 WYKOP_API_KEY = "w5a3a180511bc4485f634ea0250255b7d9"  # Twój klucz API Wykop[1]
 WYKOP_SECRET = "dce46552b1a284afba3939adee893109"      # Twój sekret Wykop[1]
 
