@@ -1,5 +1,6 @@
 groq
 flask
+telebot
 requests
 python-dotenv
 python-telegram-bot==21.6
