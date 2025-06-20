@@ -1,189 +1,307 @@
-import logging
+import telebot
 import requests
 import json
-import os
-import re
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    MessageHandler,
-    ContextTypes,
-    ConversationHandler,
-    filters,
-)
+import hashlib
+import time
+from telebot import types
 
-API_URL = "https://chat2api-muou.onrender.com/v1/chat/completions"
-ACCESS_TOKEN = "eyJhbGciOiJSUzI1NiIsImtpZCI6IjE5MzQ0ZTY1LWJiYzktNDRkMS1hOWQwLWY5NTdiMDc5YmQwZSIsInR5cCI6IkpXVCJ9.eyJhdWQiOlsiaHR0cHM6Ly9hcGkub3BlbmFpLmNvbS92MSJdLCJjbGllbnRfaWQiOiJhcHBfWDh6WTZ2VzJwUTl0UjNkRTduSzFqTDVnSCIsImV4cCI6MTc1MDQyMzY1MywiaHR0cHM6Ly9hcGkub3BlbmFpLmNvbS9hdXRoIjp7InVzZXJfaWQiOiJ1c2VyLVRLOTdERHhmMWdaU21SRGp3VVRXYW13TyJ9LCJodHRwczovL2FwaS5vcGVuYWkuY29tL3Byb2ZpbGUiOnsiZW1haWwiOiJqdnJ0ZXN0NjE1QGdtYWlsLmNvbSIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlfSwiaWF0IjoxNzQ5NTU5NjUzLCJpc3MiOiJodHRwczovL2F1dGgub3BlbmFpLmNvbSIsImp0aSI6IjFjYmMxNWU3LWFkMDktNGQzYi04YTVmLTE3MjMyMzFiZDVlNiIsIm5iZiI6MTc0OTU1OTY1MywicHdkX2F1dGhfdGltZSI6MTc0NjUyNjQwNjc4Nywic2NwIjpbIm9wZW5pZCIsImVtYWlsIiwicHJvZmlsZSIsIm9mZmxpbmVfYWNjZXNzIiwibW9kZWwucmVxdWVzdCIsIm1vZGVsLnJlYWQiLCJvcmdhbml6YXRpb24ucmVhZCIsIm9yZ2FuaXphdGlvbi53cml0ZSJdLCJzZXNzaW9uX2lkIjoiYXV0aHNlc3NfY1hNZjBOODh2OFppdnAyNTVTSHZWUWU4Iiwic3ViIjoiZ29vZ2xlLW9hdXRoMnwxMDE5ODQ1MDM5MzM4NDI4NTc4MjAifQ.nRsuWgPjbiXwRIrFFNlE23qWFLONu_EftP9by6b_GMoEqOfWzmMJZ3myFpQc4x_PuIfYCiWo2Z10ZHXYjoT578ogjC8465nc-un3Vi-b17oglR2SGg4sP6mkdc-97tet5RODdyjsI6jbpR53ci9Jl4DxZUiIChdjYM2ztPXDx0ug_zT-69eIKcaGNK7cA2CFccIL6Y03t5AaUjUQBhMMgqQ76UsLhnU-QWG1MOMaqi699jtBvFsNgRgb7quuFq9EtxU_ijzB4RvgRofqhxFAhEJqxCaVUhXRNilmkglo1Q_AVRwEkk3vqOzD0fHu9h1yGw3-SIIywyZS9G98Tm_2MBkPtaqh2hIkrbdTS077BFUQW7fEmtg2maAopll-5vOk_roCEzuDQnXXvD3Q8G2URsvL4KvTzyC_Yeidbiu1otVriXxGnKw4gi6ItJmmQK8TbzuFgoTs3aty4FzMfZMff70w-l6escyci3NG_fSn2UBd_0RE0K3xbIRAumAvgYiQMcpAIs_a1d42phU-Bie6aPn8Bcj5xoLR_p4RLiujWoq2WDizIaQZueQqCZpZlZGIekRO9JcgIFgudbVmdEJDIj_R-MMSNloa8k2GeTuZW3c9W03qL9_AsGS7ZuZSW2imcorU5ZG_YG1xHLRSxGIeUw-VRzLcnfhUM8Fvsc0UI6Q"
-TELEGRAM_BOT_TOKEN = "5571257868:AAEeNLXwvgFwn3O-RQ_wx4SqTmKnzQoHYEg"
+# Konfiguracja
+BOT_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN_HERE"  # Zamień na swój token
+WYKOP_API_KEY = "w5a3a180511bc4485f634ea0250255b7d9"
+WYKOP_SECRET = "dce46552b1a284afba3939adee893109"
 
-CONV_DIR = "conversations"
-os.makedirs(CONV_DIR, exist_ok=True)
+bot = telebot.TeleBot(BOT_TOKEN)
 
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
-)
+# Przechowywanie sesji użytkowników
+user_sessions = {}
 
-MAIN_MENU = 0
+class WykopAPI:
+    def __init__(self, api_key, secret):
+        self.api_key = api_key
+        self.secret = secret
+        self.base_url = "https://wykop.pl/api/v3"
+        self.token = None
+        self.refresh_token = None
+        self.token_expires = 0
+        
+    def get_connect_data(self):
+        """Generuje dane potrzebne do autoryzacji"""
+        timestamp = str(int(time.time()))
+        connect_data = f"{self.secret}{self.api_key}{timestamp}"
+        connect_hash = hashlib.md5(connect_data.encode()).hexdigest()
+        
+        return {
+            'data': {
+                'key': self.api_key,
+                'sign': connect_hash
+            }
+        }
+    
+    def authorize(self):
+        """Autoryzuje połączenie z Wykop API"""
+        try:
+            url = f"{self.base_url}/auth"
+            connect_data = self.get_connect_data()
+            
+            response = requests.post(url, json=connect_data)
+            
+            if response.status_code == 200:
+                auth_data = response.json()
+                if 'data' in auth_data:
+                    self.token = auth_data['data'].get('token')
+                    self.refresh_token = auth_data['data'].get('refresh_token')
+                    self.token_expires = time.time() + 3600  # Token ważny przez godzinę
+                    return True
+            return False
+        except Exception as e:
+            print(f"Błąd autoryzacji: {e}")
+            return False
+    
+    def get_headers(self):
+        """Zwraca nagłówki z tokenem autoryzacji"""
+        if not self.token or time.time() >= self.token_expires:
+            if not self.authorize():
+                return None
+        
+        return {
+            'Authorization': f'Bearer {self.token}',
+            'Content-Type': 'application/json'
+        }
+    
+    def get_hits(self, page=1):
+        """Pobiera hity dnia z Wykop"""
+        try:
+            headers = self.get_headers()
+            if not headers:
+                return None
+                
+            url = f"{self.base_url}/hits"
+            params = {'page': page}
+            
+            response = requests.get(url, headers=headers, params=params)
+            
+            if response.status_code == 200:
+                return response.json()
+            return None
+        except Exception as e:
+            print(f"Błąd pobierania hitów: {e}")
+            return None
 
-MENU_KEYBOARD = ReplyKeyboardMarkup(
-    [
-        [KeyboardButton("💬 Nowy czat"), KeyboardButton("📝 Pokaż historię")],
-        [KeyboardButton("❌ Reset historii"), KeyboardButton("ℹ️ Pomoc")]
-    ],
-    resize_keyboard=True,
-)
+# Inicjalizacja Wykop API
+wykop_api = WykopAPI(WYKOP_API_KEY, WYKOP_SECRET)
 
-SYSTEM_PROMPT = {
-    "role": "system",
-    "content": (
-        "Jesteś wulgarnym, pojebanym, niecenzurowanym chatbotem. "
-        "Odpowiadaj bezpośrednio, używaj wulgaryzmów, ironii, memów, żartów, "
-        "nie przepraszaj za swój styl. Możesz być niegrzeczny, sarkastyczny, "
-        "ale zawsze śmieszny. Nie cenzuruj się."
-    )
-}
+def create_main_menu():
+    """Tworzy główne menu bota"""
+    keyboard = types.InlineKeyboardMarkup()
+    keyboard.add(types.InlineKeyboardButton("📈 Wykop TOP Posts", callback_data="wykop_menu"))
+    return keyboard
 
-# Słownik zamiany najostrzejszych słów
-CENZURA = {
-    r"\bkurw[aąeoy]\b": "k***a",
-    r"\bchuj[aey]?\b": "ch*j",
-    r"\bpojeba(?:n[yae]?)?\b": "poje**ny",
-    r"\bpierd[oó]l[aey]?\b": "pie*dol",
-    r"\bspierdal[aey]?\b": "spier*alaj",
-    r"\bjeb[aąeoy]\b": "j*b",
-    r"\bskurw[aąeoy]\b": "sku*wiel",
-    r"\bciul[aey]?\b": "c**l",
-    r"\bdup[aey]?\b": "d*pa",
-    r"\bfiut[aey]?\b": "f**t",
-    r"\bzasr[aey]?\b": "zas*any",
-    r"\bsuk[aey]?\b": "s*k",
-    r"\bidiot[aey]?\b": "idi*ta",
-}
+def create_wykop_menu():
+    """Tworzy menu Wykop"""
+    keyboard = types.InlineKeyboardMarkup()
+    keyboard.add(types.InlineKeyboardButton("🔍 Przeglądaj posty", callback_data="browse_posts"))
+    keyboard.add(types.InlineKeyboardButton("🔙 Powrót do menu głównego", callback_data="main_menu"))
+    return keyboard
 
-def lagodz_prompt(text):
-    for pattern, subst in CENZURA.items():
-        text = re.sub(pattern, subst, text, flags=re.IGNORECASE)
-    return text
+def create_post_navigation(current_index, total_posts):
+    """Tworzy nawigację dla postów"""
+    keyboard = types.InlineKeyboardMarkup()
+    
+    # Pierwszy rząd - nawigacja
+    row1 = []
+    if current_index > 0:
+        row1.append(types.InlineKeyboardButton("⬅️ Poprzedni", callback_data=f"post_prev_{current_index}"))
+    if current_index < total_posts - 1:
+        row1.append(types.InlineKeyboardButton("➡️ Następny", callback_data=f"post_next_{current_index}"))
+    
+    if row1:
+        keyboard.row(*row1)
+    
+    # Drugi rząd - akcje
+    keyboard.add(types.InlineKeyboardButton("🔧 Użyj Posta (w konstrukcji)", callback_data="use_post"))
+    keyboard.add(types.InlineKeyboardButton("🔙 Powrót do menu Wykop", callback_data="wykop_menu"))
+    
+    return keyboard
 
-def get_history(user_id):
-    path = os.path.join(CONV_DIR, f"{user_id}.json")
-    if os.path.exists(path):
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return []
-
-def save_history(user_id, history):
-    path = os.path.join(CONV_DIR, f"{user_id}.json")
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(history, f, ensure_ascii=False)
-
-def chat_with_gpt(messages):
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {ACCESS_TOKEN}",
-    }
-    payload = {
-        "model": "gpt-3.5-turbo",
-        "messages": messages,
-    }
+def format_post(post_data):
+    """Formatuje post do wyświetlenia"""
     try:
-        response = requests.post(API_URL, json=payload, headers=headers, timeout=60)
-        response.raise_for_status()
-        data = response.json()
-        return data["choices"][0]["message"]["content"]
-    except requests.exceptions.HTTPError as e:
-        if e.response is not None and e.response.status_code == 403:
-            return "API odrzuciło to pytanie, bo było zbyt pojebane nawet dla mnie. Spróbuj napisać to trochę łagodniej."
-        return f"Błąd: {e}"
+        author = post_data.get('author', {}).get('login', 'Nieznany')
+        plus = post_data.get('votes', {}).get('plus', 0)
+        minus = post_data.get('votes', {}).get('minus', 0)
+        comments_count = post_data.get('comments_count', 0)
+        content = post_data.get('content', 'Brak treści')
+        
+        # Obcinamy treść jeśli jest zbyt długa
+        if len(content) > 1000:
+            content = content[:1000] + "..."
+        
+        formatted_post = f"""
+👤 **Autor:** {author}
+👍 **Plus:** {plus} | 👎 **Minus:** {minus}
+💬 **Komentarze:** {comments_count}
+
+📝 **Treść:**
+{content}
+        """
+        
+        return formatted_post.strip()
     except Exception as e:
-        return f"Błąd: {e}"
+        return f"Błąd formatowania posta: {e}"
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "Siema! Jestem wulgarny i pojebany bot. Wybierz coś z menu albo napisz wiadomość.",
-        reply_markup=MENU_KEYBOARD,
+@bot.message_handler(commands=['start'])
+def start_command(message):
+    """Obsługuje komendę /start"""
+    user_id = message.from_user.id
+    user_sessions[user_id] = {
+        'posts': [],
+        'current_post_index': 0
+    }
+    
+    welcome_text = """
+🤖 **Witaj w bocie Wykop Telegram!**
+
+Użyj menu poniżej, aby nawigować po funkcjach bota.
+    """
+    
+    bot.send_message(
+        message.chat.id,
+        welcome_text,
+        parse_mode='Markdown',
+        reply_markup=create_main_menu()
     )
-    return MAIN_MENU
 
-async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
-    user_id = update.effective_user.id
-
-    if text == "💬 Nowy czat":
-        save_history(user_id, [])
-        await update.message.reply_text(
-            "Nowy czat rozpoczęty. Możesz pisać od nowa.",
-            reply_markup=MENU_KEYBOARD,
-        )
-        return MAIN_MENU
-
-    elif text == "📝 Pokaż historię":
-        history = get_history(user_id)
-        if not history:
-            await update.message.reply_text("Nie masz jeszcze żadnej historii, leniu.", reply_markup=MENU_KEYBOARD)
-        else:
-            msg = "\n".join(
-                [f"{h['role']}: {h['content']}" for h in history[-10:]]
+@bot.callback_query_handler(func=lambda call: True)
+def callback_handler(call):
+    """Obsługuje wszystkie callback queries"""
+    user_id = call.from_user.id
+    
+    try:
+        if call.data == "main_menu":
+            bot.edit_message_text(
+                "🏠 **Menu Główne**\n\nWybierz opcję:",
+                call.message.chat.id,
+                call.message.message_id,
+                parse_mode='Markdown',
+                reply_markup=create_main_menu()
             )
-            await update.message.reply_text(f"Ostatnie wiadomości:\n{msg}", reply_markup=MENU_KEYBOARD)
-        return MAIN_MENU
+            
+        elif call.data == "wykop_menu":
+            bot.edit_message_text(
+                "📈 **Wykop TOP Posts**\n\nWybierz akcję:",
+                call.message.chat.id,
+                call.message.message_id,
+                parse_mode='Markdown',
+                reply_markup=create_wykop_menu()
+            )
+            
+        elif call.data == "browse_posts":
+            # Pobierz posty z Wykop
+            bot.edit_message_text(
+                "🔄 Pobieranie postów...",
+                call.message.chat.id,
+                call.message.message_id
+            )
+            
+            hits_data = wykop_api.get_hits()
+            
+            if hits_data and 'data' in hits_data:
+                posts = hits_data['data']
+                
+                if posts:
+                    # Zapisz posty w sesji użytkownika
+                    if user_id not in user_sessions:
+                        user_sessions[user_id] = {}
+                    
+                    user_sessions[user_id]['posts'] = posts
+                    user_sessions[user_id]['current_post_index'] = 0
+                    
+                    # Wyświetl pierwszy post
+                    first_post = posts[0]
+                    formatted_post = format_post(first_post)
+                    
+                    bot.edit_message_text(
+                        f"📊 **Post 1/{len(posts)}**\n\n{formatted_post}",
+                        call.message.chat.id,
+                        call.message.message_id,
+                        parse_mode='Markdown',
+                        reply_markup=create_post_navigation(0, len(posts))
+                    )
+                else:
+                    bot.edit_message_text(
+                        "❌ Nie znaleziono postów.",
+                        call.message.chat.id,
+                        call.message.message_id,
+                        reply_markup=create_wykop_menu()
+                    )
+            else:
+                bot.edit_message_text(
+                    "❌ Błąd podczas pobierania postów z Wykop.",
+                    call.message.chat.id,
+                    call.message.message_id,
+                    reply_markup=create_wykop_menu()
+                )
+                
+        elif call.data.startswith("post_"):
+            # Obsługa nawigacji po postach
+            action_parts = call.data.split("_")
+            action = action_parts[1]  # prev lub next
+            current_index = int(action_parts[2])
+            
+            if user_id in user_sessions and 'posts' in user_sessions[user_id]:
+                posts = user_sessions[user_id]['posts']
+                
+                if action == "prev" and current_index > 0:
+                    new_index = current_index - 1
+                elif action == "next" and current_index < len(posts) - 1:
+                    new_index = current_index + 1
+                else:
+                    new_index = current_index
+                
+                user_sessions[user_id]['current_post_index'] = new_index
+                
+                # Wyświetl wybrany post
+                selected_post = posts[new_index]
+                formatted_post = format_post(selected_post)
+                
+                bot.edit_message_text(
+                    f"📊 **Post {new_index + 1}/{len(posts)}**\n\n{formatted_post}",
+                    call.message.chat.id,
+                    call.message.message_id,
+                    parse_mode='Markdown',
+                    reply_markup=create_post_navigation(new_index, len(posts))
+                )
+                
+        elif call.data == "use_post":
+            bot.answer_callback_query(
+                call.id,
+                "🔧 Ta funkcja jest w trakcie konstrukcji!",
+                show_alert=True
+            )
+            
+        # Odpowiedz na callback query
+        bot.answer_callback_query(call.id)
+        
+    except Exception as e:
+        print(f"Błąd w callback_handler: {e}")
+        bot.answer_callback_query(call.id, "❌ Wystąpił błąd")
 
-    elif text == "❌ Reset historii":
-        save_history(user_id, [])
-        await update.message.reply_text("Wyjebałem całą twoją historię. Możesz zaczynać od nowa.", reply_markup=MENU_KEYBOARD)
-        return MAIN_MENU
-
-    elif text == "ℹ️ Pomoc":
-        await update.message.reply_text(
-            "Menu:\n"
-            "💬 Nowy czat – zacznij od nowa\n"
-            "📝 Pokaż historię – wyświetl ostatnie wiadomości\n"
-            "❌ Reset historii – usuń całą historię\n"
-            "Po prostu napisz, jeśli chcesz pogadać z pojebanym AI.",
-            reply_markup=MENU_KEYBOARD,
-        )
-        return MAIN_MENU
-
-    else:
-        return await chat_ai(update, context)
-
-async def chat_ai(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user_msg = lagodz_prompt(update.message.text)
-
-    history = get_history(user_id)
-    history.append({"role": "user", "content": user_msg})
-
-    short_history = history[-10:]
-
-    messages = [SYSTEM_PROMPT] + [{"role": h["role"], "content": h["content"]} for h in short_history]
-
-    bot_reply = chat_with_gpt(messages)
-    history.append({"role": "assistant", "content": bot_reply})
-    save_history(user_id, history)
-
-    await update.message.reply_text(bot_reply, reply_markup=MENU_KEYBOARD)
-    return MAIN_MENU
-
-def main():
-    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
-
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("start", start)],
-        states={
-            MAIN_MENU: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, main_menu)
-            ],
-        },
-        fallbacks=[CommandHandler("menu", start)],
+@bot.message_handler(func=lambda message: True)
+def handle_all_messages(message):
+    """Obsługuje wszystkie pozostałe wiadomości"""
+    bot.send_message(
+        message.chat.id,
+        "🤖 Użyj /start aby uruchomić bota i wyświetlić menu.",
+        reply_markup=create_main_menu()
     )
-    app.add_handler(conv_handler)
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, main_menu))
-    app.add_handler(CommandHandler("menu", start))
-
-    print("Bot wulgarny i pojebany działa!")
-    app.run_polling()
 
 if __name__ == "__main__":
-    main()
+    print("🚀 Bot Telegram-Wykop uruchomiony!")
+    print("Naciśnij Ctrl+C aby zatrzymać bota")
+    
+    try:
+        bot.polling(none_stop=True)
+    except KeyboardInterrupt:
+        print("\n⏹️ Bot zatrzymany przez użytkownika")
+    except Exception as e:
+        print(f"❌ Błąd bota: {e}")
