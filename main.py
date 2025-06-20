@@ -1,12 +1,16 @@
 import telebot
 import requests
 import json
-import hashlib
 import time
 from telebot import types
+import logging
 
-# Konfiguracja
-BOT_TOKEN = "5571257868:AAEeNLXwvgFwn3O-RQ_wx4SqTmKnzQoHYEg"  # Zamień na swój token
+# Konfiguracja logowania
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Konfiguracja - MUSISZ ZMIENIĆ TOKEN BOTA
+BOT_TOKEN = "5571257868:AAEeNLXwvgFwn3O-RQ_wx4SqTmKnzQoHYEg"  # Zamień na swój token Telegram
 WYKOP_API_KEY = "w5a3a180511bc4485f634ea0250255b7d9"
 WYKOP_SECRET = "dce46552b1a284afba3939adee893109"
 
@@ -21,70 +25,85 @@ class WykopAPI:
         self.secret = secret
         self.base_url = "https://wykop.pl/api/v3"
         self.token = None
-        self.refresh_token = None
         self.token_expires = 0
         
-    def get_connect_data(self):
-        """Generuje dane potrzebne do autoryzacji"""
-        timestamp = str(int(time.time()))
-        connect_data = f"{self.secret}{self.api_key}{timestamp}"
-        connect_hash = hashlib.md5(connect_data.encode()).hexdigest()
-        
-        return {
-            'data': {
-                'key': self.api_key,
-                'sign': connect_hash
-            }
-        }
-    
-    def authorize(self):
-        """Autoryzuje połączenie z Wykop API"""
+    def authenticate_app(self):
+        """Autoryzuje aplikację w Wykop API v3"""
         try:
             url = f"{self.base_url}/auth"
-            connect_data = self.get_connect_data()
             
-            response = requests.post(url, json=connect_data)
+            payload = {
+                "data": {
+                    "key": self.api_key,
+                    "secret": self.secret
+                }
+            }
+            
+            headers = {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            }
+            
+            logger.info(f"Próba autoryzacji z API Wykop...")
+            response = requests.post(url, json=payload, headers=headers)
             
             if response.status_code == 200:
                 auth_data = response.json()
-                if 'data' in auth_data:
-                    self.token = auth_data['data'].get('token')
-                    self.refresh_token = auth_data['data'].get('refresh_token')
+                if 'data' in auth_data and 'token' in auth_data['data']:
+                    self.token = auth_data['data']['token']
                     self.token_expires = time.time() + 3600  # Token ważny przez godzinę
+                    logger.info("✅ Autoryzacja z Wykop API udana")
                     return True
+            
+            logger.error(f"❌ Błąd autoryzacji: {response.status_code} - {response.text}")
             return False
+            
         except Exception as e:
-            print(f"Błąd autoryzacji: {e}")
+            logger.error(f"❌ Wyjątek podczas autoryzacji: {e}")
             return False
     
     def get_headers(self):
         """Zwraca nagłówki z tokenem autoryzacji"""
         if not self.token or time.time() >= self.token_expires:
-            if not self.authorize():
+            if not self.authenticate_app():
                 return None
         
         return {
             'Authorization': f'Bearer {self.token}',
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
         }
     
-    def get_hits(self, page=1):
-        """Pobiera hity dnia z Wykop"""
+    def get_entries(self, page=1, sort='hot'):
+        """Pobiera wpisy z mikrobloga (entries)"""
         try:
             headers = self.get_headers()
             if not headers:
                 return None
                 
-            url = f"{self.base_url}/hits"
-            params = {'page': page}
+            url = f"{self.base_url}/entries"
+            params = {
+                'page': page,
+                'sort': sort  # 'hot', 'newest', 'active'
+            }
             
+            logger.info(f"Pobieranie wpisów z mikrobloga...")
             response = requests.get(url, headers=headers, params=params)
             
             if response.status_code == 200:
+                logger.info("✅ Wpisy pobrane pomyślnie")
                 return response.json()
-            return None
+            elif response.status_code == 401:
+                # Token wygasł, spróbuj ponownie
+                logger.info("Token wygasł, ponawiam autoryzację...")
+                self.token = None
+                return self.get_entries(page, sort)
+            else:
+                logger.error(f"❌ Błąd pobierania wpisów: {response.status_code} - {response.text}")
+                return None
+                
         except Exception as e:
-            print(f"Błąd pobierania hitów: {e}")
+            logger.error(f"❌ Wyjątek podczas pobierania wpisów: {e}")
             return None
 
 # Inicjalizacja Wykop API
@@ -124,20 +143,38 @@ def create_post_navigation(current_index, total_posts):
     return keyboard
 
 def format_post(post_data):
-    """Formatuje post do wyświetlenia"""
+    """Formatuje wpis do wyświetlenia"""
     try:
-        author = post_data.get('author', {}).get('login', 'Nieznany')
-        plus = post_data.get('votes', {}).get('plus', 0)
-        minus = post_data.get('votes', {}).get('minus', 0)
+        # Obsługa różnych struktur danych z API
+        author = "Nieznany"
+        if 'author' in post_data:
+            if isinstance(post_data['author'], dict):
+                author = post_data['author'].get('username', post_data['author'].get('login', 'Nieznany'))
+            else:
+                author = str(post_data['author'])
+        
+        # Obsługa głosów
+        plus = 0
+        minus = 0
+        if 'votes' in post_data:
+            votes = post_data['votes']
+            if isinstance(votes, dict):
+                plus = votes.get('up', votes.get('plus', 0))
+                minus = votes.get('down', votes.get('minus', 0))
+        
         comments_count = post_data.get('comments_count', 0)
-        content = post_data.get('content', 'Brak treści')
+        content = post_data.get('content', post_data.get('body', 'Brak treści'))
         
         # Obcinamy treść jeśli jest zbyt długa
-        if len(content) > 1000:
-            content = content[:1000] + "..."
+        if len(content) > 800:
+            content = content[:800] + "..."
+        
+        # Usuwamy tagi HTML jeśli są obecne
+        import re
+        content = re.sub(r'<[^>]+>', '', content)
         
         formatted_post = f"""
-👤 **Autor:** {author}
+👤 **Autor:** @{author}
 👍 **Plus:** {plus} | 👎 **Minus:** {minus}
 💬 **Komentarze:** {comments_count}
 
@@ -147,7 +184,8 @@ def format_post(post_data):
         
         return formatted_post.strip()
     except Exception as e:
-        return f"Błąd formatowania posta: {e}"
+        logger.error(f"Błąd formatowania wpisu: {e}")
+        return f"Błąd formatowania wpisu: {e}"
 
 @bot.message_handler(commands=['start'])
 def start_command(message):
@@ -160,6 +198,8 @@ def start_command(message):
     
     welcome_text = """
 🤖 **Witaj w bocie Wykop Telegram!**
+
+Ten bot pozwala przeglądać popularne wpisy z mikrobloga Wykop.pl.
 
 Użyj menu poniżej, aby nawigować po funkcjach bota.
     """
@@ -196,32 +236,33 @@ def callback_handler(call):
             )
             
         elif call.data == "browse_posts":
-            # Pobierz posty z Wykop
+            # Pobierz wpisy z Wykop
             bot.edit_message_text(
-                "🔄 Pobieranie postów...",
+                "🔄 Pobieranie popularnych wpisów z mikrobloga...",
                 call.message.chat.id,
                 call.message.message_id
             )
             
-            hits_data = wykop_api.get_hits()
+            # Użyj metody entries (mikrobloga)
+            entries_data = wykop_api.get_entries(sort='hot')
             
-            if hits_data and 'data' in hits_data:
-                posts = hits_data['data']
+            if entries_data and 'data' in entries_data:
+                posts = entries_data['data']
                 
-                if posts:
-                    # Zapisz posty w sesji użytkownika
+                if posts and len(posts) > 0:
+                    # Zapisz wpisy w sesji użytkownika
                     if user_id not in user_sessions:
                         user_sessions[user_id] = {}
                     
                     user_sessions[user_id]['posts'] = posts
                     user_sessions[user_id]['current_post_index'] = 0
                     
-                    # Wyświetl pierwszy post
+                    # Wyświetl pierwszy wpis
                     first_post = posts[0]
                     formatted_post = format_post(first_post)
                     
                     bot.edit_message_text(
-                        f"📊 **Post 1/{len(posts)}**\n\n{formatted_post}",
+                        f"📊 **Wpis 1/{len(posts)}**\n\n{formatted_post}",
                         call.message.chat.id,
                         call.message.message_id,
                         parse_mode='Markdown',
@@ -229,21 +270,25 @@ def callback_handler(call):
                     )
                 else:
                     bot.edit_message_text(
-                        "❌ Nie znaleziono postów.",
+                        "❌ Nie znaleziono wpisów na mikroblogu.",
                         call.message.chat.id,
                         call.message.message_id,
                         reply_markup=create_wykop_menu()
                     )
             else:
                 bot.edit_message_text(
-                    "❌ Błąd podczas pobierania postów z Wykop.",
+                    "❌ Błąd podczas pobierania wpisów z Wykop API.\n\n"
+                    "Możliwe przyczyny:\n"
+                    "• Problem z autoryzacją API\n"
+                    "• Tymczasowy problem z serwerem Wykop\n"
+                    "• Nieprawidłowe klucze API",
                     call.message.chat.id,
                     call.message.message_id,
                     reply_markup=create_wykop_menu()
                 )
                 
         elif call.data.startswith("post_"):
-            # Obsługa nawigacji po postach
+            # Obsługa nawigacji po wpisach
             action_parts = call.data.split("_")
             action = action_parts[1]  # prev lub next
             current_index = int(action_parts[2])
@@ -260,12 +305,12 @@ def callback_handler(call):
                 
                 user_sessions[user_id]['current_post_index'] = new_index
                 
-                # Wyświetl wybrany post
+                # Wyświetl wybrany wpis
                 selected_post = posts[new_index]
                 formatted_post = format_post(selected_post)
                 
                 bot.edit_message_text(
-                    f"📊 **Post {new_index + 1}/{len(posts)}**\n\n{formatted_post}",
+                    f"📊 **Wpis {new_index + 1}/{len(posts)}**\n\n{formatted_post}",
                     call.message.chat.id,
                     call.message.message_id,
                     parse_mode='Markdown',
@@ -275,7 +320,7 @@ def callback_handler(call):
         elif call.data == "use_post":
             bot.answer_callback_query(
                 call.id,
-                "🔧 Ta funkcja jest w trakcie konstrukcji!",
+                "🔧 Ta funkcja jest w trakcie konstrukcji!\n\nTutaj w przyszłości będzie można wykorzystać wybrany wpis.",
                 show_alert=True
             )
             
@@ -283,21 +328,60 @@ def callback_handler(call):
         bot.answer_callback_query(call.id)
         
     except Exception as e:
-        print(f"Błąd w callback_handler: {e}")
-        bot.answer_callback_query(call.id, "❌ Wystąpił błąd")
+        logger.error(f"Błąd w callback_handler: {e}")
+        bot.answer_callback_query(call.id, "❌ Wystąpił błąd podczas przetwarzania")
+        
+        # Spróbuj wrócić do menu głównego
+        try:
+            bot.edit_message_text(
+                "❌ Wystąpił błąd. Powrót do menu głównego.",
+                call.message.chat.id,
+                call.message.message_id,
+                reply_markup=create_main_menu()
+            )
+        except:
+            pass
 
 @bot.message_handler(func=lambda message: True)
 def handle_all_messages(message):
     """Obsługuje wszystkie pozostałe wiadomości"""
     bot.send_message(
         message.chat.id,
-        "🤖 Użyj /start aby uruchomić bota i wyświetlić menu.",
+        "🤖 Użyj /start aby uruchomić bota i wyświetlić menu.\n\n"
+        "Bot pozwala przeglądać popularne wpisy z mikrobloga Wykop.pl",
         reply_markup=create_main_menu()
     )
 
+def test_wykop_connection():
+    """Testuje połączenie z Wykop API"""
+    logger.info("🧪 Testowanie połączenia z Wykop API...")
+    
+    if wykop_api.authenticate_app():
+        logger.info("✅ Autoryzacja z Wykop API udana")
+        
+        # Test pobierania wpisów
+        entries = wykop_api.get_entries()
+        if entries and 'data' in entries:
+            logger.info(f"✅ Pobrano {len(entries['data'])} wpisów z mikrobloga")
+            return True
+        else:
+            logger.error("❌ Błąd pobierania wpisów")
+            return False
+    else:
+        logger.error("❌ Błąd autoryzacji z Wykop API")
+        return False
+
 if __name__ == "__main__":
-    print("🚀 Bot Telegram-Wykop uruchomiony!")
-    print("Naciśnij Ctrl+C aby zatrzymać bota")
+    print("🚀 Uruchamianie Bota Telegram-Wykop...")
+    
+    # Test połączenia z Wykop API przed uruchomieniem bota
+    if not test_wykop_connection():
+        print("❌ Nie można nawiązać połączenia z Wykop API. Sprawdź klucze.")
+        print("⚠️  Bot będzie działał, ale funkcje Wykop mogą nie działać poprawnie.")
+    
+    print("✅ Bot Telegram-Wykop uruchomiony!")
+    print("📱 Naciśnij Ctrl+C aby zatrzymać bota")
+    print("🔑 Pamiętaj aby ustawić prawidłowy TOKEN w BOT_TOKEN!")
     
     try:
         bot.polling(none_stop=True)
@@ -305,3 +389,4 @@ if __name__ == "__main__":
         print("\n⏹️ Bot zatrzymany przez użytkownika")
     except Exception as e:
         print(f"❌ Błąd bota: {e}")
+        logger.error(f"Krytyczny błąd bota: {e}")
