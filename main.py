@@ -4,6 +4,7 @@ import json
 import time
 from telebot import types
 import logging
+import os
 
 # Konfiguracja logowania
 logging.basicConfig(level=logging.INFO)
